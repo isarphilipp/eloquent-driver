@@ -4,9 +4,11 @@ namespace Statamic\Eloquent\Entries;
 
 use Statamic\Eloquent\Entries\EntryModel as Model;
 use Statamic\Entries\Entry as FileEntry;
+use Statamic\Facades\Blink;
 
 class Entry extends FileEntry
 {
+
     protected $model;
 
     public static function fromModel(Model $model)
@@ -28,27 +30,29 @@ class Entry extends FileEntry
 
         $data = $this->data();
 
-        if ($this->blueprint && $this->collection()->entryBlueprints()->count() > 1) {
+        if ($this->blueprint && $this->collection()->entryBlueprints()->count() > 1)
+        {
             $data['blueprint'] = $this->blueprint;
         }
 
         return $class::findOrNew($this->id())->fill([
-            'id' => $this->id(),
-            'origin_id' => $this->originId(),
-            'site' => $this->locale(),
-            'slug' => $this->slug(),
-            'uri' => $this->uri(),
-            'date' => $this->hasDate() ? $this->date() : null,
+            'id'         => $this->id(),
+            'origin_id'  => $this->originId(),
+            'site'       => $this->locale(),
+            'slug'       => $this->slug(),
+            'uri'        => $this->uri(),
+            'date'       => $this->hasDate() ? $this->date() : null,
             'collection' => $this->collectionHandle(),
-            'data' => $data->except(EntryQueryBuilder::COLUMNS),
-            'published' => $this->published(),
-            'status' => $this->status(),
+            'data'       => $data->except(EntryQueryBuilder::COLUMNS),
+            'published'  => $this->published(),
+            'status'     => $this->status(),
         ]);
     }
 
     public function model($model = null)
     {
-        if (func_num_args() === 0) {
+        if (func_num_args() === 0)
+        {
             return $this->model;
         }
 
@@ -66,17 +70,20 @@ class Entry extends FileEntry
 
     public function origin($origin = null)
     {
-        if (func_num_args() > 0) {
+        if (func_num_args() > 0)
+        {
             $this->origin = $origin;
 
             return $this;
         }
 
-        if ($this->origin) {
+        if ($this->origin)
+        {
             return $this->origin;
         }
 
-        if (! $this->model->origin) {
+        if ( ! $this->model->origin)
+        {
             return null;
         }
 
@@ -92,4 +99,45 @@ class Entry extends FileEntry
     {
         return $this->originId() !== null;
     }
+
+    public function descendants()
+    {
+        /**
+         * Strongly opinionated change to increase performance for our use case:
+         * We assume that there's max 2 layers of descendants (root -> origin -> entry)
+         */
+
+        // First pass: get own localizations
+        if ( ! $this->localizations)
+        {
+
+            $this->localizations = Blink::once("eloquent-builder::descendants::{$this->id()}", function () {
+                return self::query()
+                    ->where('collection', $this->collectionHandle())
+                    ->where('origin', $this->id())
+                    ->get()
+                    ->keyBy
+                    ->locale();
+            });
+        }
+
+        // Second pass: get localizations of localizations, but in one go
+        $originIds = $this->localizations->map(function (Entry $localization) {
+            return $localization->id();
+        });
+
+        $hashedOriginIds = md5($originIds->implode('-'));
+
+        $childLocalizations = Blink::once("eloquent-builder::descendants::{$hashedOriginIds}", function () use ($originIds) {
+            return self::query()
+                ->where('collection', $this->collectionHandle())
+                ->whereIn('origin', $originIds)
+                ->get()
+                ->keyBy
+                ->locale();
+        });
+
+        return $this->localizations->merge($childLocalizations);
+    }
+
 }
