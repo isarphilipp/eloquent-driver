@@ -126,6 +126,11 @@ class Entry extends FileEntry
             return $localization->id();
         });
 
+        if($originIds->count() == 0)
+        {
+            return $this->localizations;
+        }
+
         $hashedOriginIds = md5($originIds->implode('-'));
 
         $childLocalizations = Blink::once("eloquent-builder::descendants::{$hashedOriginIds}", function () use ($originIds) {
