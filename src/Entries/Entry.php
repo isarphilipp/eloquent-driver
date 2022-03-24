@@ -104,7 +104,10 @@ class Entry extends FileEntry
     {
         /**
          * Strongly opinionated change to increase performance for our use case:
-         * We assume that there's max 2 layers of descendants (root -> origin -> entry)
+         * We assume that there's max 3 layers of descendants (root -> origin -> another_origin -> entry)
+         *
+         * This function could need some cleanup to remove duplication. With a fresh mind, it's probably
+         * refactorable into something recursive OR something using ->with(['descendants', 'descendants.descendants']) on eloquent
          */
 
         // First pass: get own localizations
@@ -122,27 +125,57 @@ class Entry extends FileEntry
         }
 
         // Second pass: get localizations of localizations, but in one go
-        $originIds = $this->localizations->map(function (Entry $localization) {
-            return $localization->id();
-        });
+        $idsOfFirstLevel = $this->localizations
+            ->map(function (Entry $localization) {
+                return $localization->id();
+            })
+            ->unique();
 
-        if($originIds->count() == 0)
+        if ($idsOfFirstLevel->count() == 0)
         {
             return $this->localizations;
         }
 
-        $hashedOriginIds = md5($originIds->implode('-'));
+        $hashedOriginIds = md5($idsOfFirstLevel->implode('-'));
 
-        $childLocalizations = Blink::once("eloquent-builder::descendants::{$hashedOriginIds}", function () use ($originIds) {
+        $childLocalizationsOfFirstLevel = Blink::once("eloquent-builder::descendants::{$hashedOriginIds}", function () use ($idsOfFirstLevel) {
             return self::query()
                 ->where('collection', $this->collectionHandle())
-                ->whereIn('origin', $originIds)
+                ->whereIn('origin', $idsOfFirstLevel)
                 ->get()
                 ->keyBy
                 ->locale();
         });
 
-        return $this->localizations->merge($childLocalizations);
+        $allLocalizations = $this->localizations->merge($childLocalizationsOfFirstLevel);
+
+
+        // Third pass: get localizations of localizations of localizations, but in one go
+        $idsOfSecondLevel = $childLocalizationsOfFirstLevel
+            ->map(function (Entry $localization) {
+                return $localization->id();
+            })
+            ->unique();
+
+        if ($idsOfSecondLevel->count() == 0)
+        {
+            return $allLocalizations;
+        }
+
+        $hashedOriginIds = md5($idsOfSecondLevel->implode('-'));
+
+        $childLocalizationsOfSecondLevel = Blink::once("eloquent-builder::descendants::{$hashedOriginIds}", function () use ($idsOfSecondLevel) {
+            return self::query()
+                ->where('collection', $this->collectionHandle())
+                ->whereIn('origin', $idsOfSecondLevel)
+                ->get()
+                ->keyBy
+                ->locale();
+        });
+
+        $allLocalizations = $allLocalizations->merge($childLocalizationsOfSecondLevel);
+
+        return $allLocalizations;
     }
 
 }
