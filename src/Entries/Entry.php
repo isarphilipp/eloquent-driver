@@ -5,6 +5,7 @@ namespace Statamic\Eloquent\Entries;
 use Statamic\Eloquent\Entries\EntryModel as Model;
 use Statamic\Entries\Entry as FileEntry;
 use Statamic\Facades\Blink;
+use Statamic\Facades\Entry as EntryFacade;
 
 class Entry extends FileEntry
 {
@@ -109,13 +110,11 @@ class Entry extends FileEntry
          * This function could need some cleanup to remove duplication. With a fresh mind, it's probably
          * refactorable into something recursive OR something using ->with(['descendants', 'descendants.descendants']) on eloquent
          */
-
         // First pass: get own localizations
         if ( ! $this->localizations)
         {
-
             $this->localizations = Blink::once("eloquent-builder::descendants::{$this->id()}", function () {
-                return self::query()
+                return EntryFacade::query()
                     ->where('collection', $this->collectionHandle())
                     ->where('origin', $this->id())
                     ->get()
@@ -139,7 +138,7 @@ class Entry extends FileEntry
         $hashedOriginIds = md5($idsOfFirstLevel->implode('-'));
 
         $childLocalizationsOfFirstLevel = Blink::once("eloquent-builder::descendants::{$hashedOriginIds}", function () use ($idsOfFirstLevel) {
-            return self::query()
+            return EntryFacade::query()
                 ->where('collection', $this->collectionHandle())
                 ->whereIn('origin', $idsOfFirstLevel)
                 ->get()
@@ -165,7 +164,7 @@ class Entry extends FileEntry
         $hashedOriginIds = md5($idsOfSecondLevel->implode('-'));
 
         $childLocalizationsOfSecondLevel = Blink::once("eloquent-builder::descendants::{$hashedOriginIds}", function () use ($idsOfSecondLevel) {
-            return self::query()
+            return EntryFacade::query()
                 ->where('collection', $this->collectionHandle())
                 ->whereIn('origin', $idsOfSecondLevel)
                 ->get()
