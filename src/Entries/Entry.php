@@ -4,6 +4,7 @@ namespace Statamic\Eloquent\Entries;
 
 use Statamic\Eloquent\Entries\EntryModel as Model;
 use Statamic\Entries\Entry as FileEntry;
+use Statamic\Entries\EntryCollection;
 use Statamic\Facades\Blink;
 use Statamic\Facades\Entry as EntryFacade;
 
@@ -110,6 +111,11 @@ class Entry extends FileEntry
          * This function could need some cleanup to remove duplication. With a fresh mind, it's probably
          * refactorable into something recursive OR something using ->with(['descendants', 'descendants.descendants']) on eloquent
          */
+
+        if(!$this->id()){
+            return EntryCollection::make([]);
+        }
+
         // First pass: get own localizations
         if ( ! $this->localizations)
         {
